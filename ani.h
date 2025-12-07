@@ -2,6 +2,7 @@
 #define ANI_H
 
 #include<stdio.h>
+#include <string.h> 
 #include "list.h" 
 #include "graph.h" 
 #include "hash.h"  
@@ -87,12 +88,13 @@ typedef struct animation
 
 typedef struct panel
 {
+    struct scene *currentScene; // Cuadro a dibujar AKA Camara 
     struct hash *layers;    // Capas en este panel
 }PANEL;
 
 typedef struct layer
 {
-    struct scene *currentScene; // Cuadro a dibujar
+    char layerName[30];
     struct hash *objects;       // Lo que dibujamos
 }LAYER;
 
@@ -121,10 +123,11 @@ typedef struct object
 
 typedef struct transform
 {
-    struct coordinates  *globalPos;  // La posicion global del objeto en el mundo
-    float scaleX,scaleY,scaleZ;     // La escala de z solo es relevante cuando se anima en 3D, al animar en 2D
+    struct coordinates  *globalPos; // La posicion global del objeto en el mundo
+    struct coordinates  *scale;     // La escala de z solo es relevante cuando se anima en 3D, al animar en 2D
+                                    // guardada en una coordenada porque asi reciclamos estructuras
                                     // la funcion la ignorara porque puede romper la animación
-    float rotX,rotY,rotZ;           // Las transformaciones rotacionales de nuestro objeto son posibles
+    struct coordinates  *rotation;  // Las transformaciones rotacionales de nuestro objeto son posibles
                                     // esto nos permitiria mostrar en la animacion el perfil de algo
                                     // sin la necesidad de definir como se dibuja, aunque puede no verse bien
                                     // dependiendo del formato de dibujado
@@ -151,6 +154,16 @@ typedef struct fig
 typedef struct coordinates
 {
     float x, y, z;
-}CORD;
+}COORD;
+
+COORD *initCoord(float x, float y, float z);
+F *initFigure(LIST *pointOffSet, enum figures f);
+TRIGGER *initTrigger(Check check, char *targetStatusKey);
+TRANSFORM *initPhysics(F *colision, COORD *pos, COORD *scale, COORD *rotation);
+OBJECT *initObject(char *objectName, char *objectLayer, TRANSFORM initial, LIST *figures, GRAPH *bluePrint, Behavior brain);
+SCENE *initScene(float width, float height);
+LAYER *initLayer(char *layerName);
+PANEL *initPanel(SCENE *camera);
+ANI *initAnimation();
 
 #endif
