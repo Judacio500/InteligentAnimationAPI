@@ -2,9 +2,9 @@
 #define ANI_H
 
 #include<stdio.h>
-#include "libs/list.h" 
-#include "libs/graph.h" 
-#include "libs/hash.h"  
+#include "list.h" 
+#include "graph.h" 
+#include "hash.h"  
 
 /*
     Para el desarrollo de esta API se tiene el siguiente planteamiento:
