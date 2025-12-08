@@ -275,6 +275,15 @@ int addObject(PANEL *l, OBJECT *o)
     return saveKey(&l->objects, o->key, o);
 }
 
+// Añadir figura a un objeto
+int addFigure(OBJECT *o, F *f)
+{
+    if(!o || !f)
+        return -1;
+
+    return handleInsert(o->figures, f, 0, SIMPLE);
+}
+
 /*
 
     Estas dos funciones son similares porque a diferencia de los paneles
@@ -397,32 +406,12 @@ LIST *triangleOffSet(float base, float height)
     return offSet;
 }
 
-F *generateFigure(enum figures f, float arg1, float arg2, float localX, float localY, float zPriority, float rotX, float rotY, float rotZ)
+F *generateFigure(enum figures figType, float arg1, float arg2, float localX, float localY, float zPriority, float rotX, float rotY, float rotZ)
 {
-    LIST *offSet = NULL;
-
-    switch(f)
-    {
-        case TRIANGLE:
-            offSet = triangleOffSet(arg1, arg2);
-            break;
-        case RECTANGLE:
-            offSet = rectangleOffSet(arg1, arg2);
-            break;
-        case POLYGON:
-            offSet = polygonOffSet(arg1, arg2);
-            break;
-        case LINE:
-            offSet = lineOffSet(arg1);
-            break;
-        case CIRCLE:
-            offSet = circleOffSet(arg1, arg2);
-            break;
-        case OVAL:
-            // Not yet implemented
-            return NULL;
-            //break;
-    }
+    LIST *offSet = getOffSet(figType, arg1, arg2);
+    
+    if(!offSet)
+        return NULL;
 
     COORD *pos = initCoord(localX, localY, zPriority);
 
@@ -442,3 +431,59 @@ F *generateFigure(enum figures f, float arg1, float arg2, float localX, float lo
 
     return newF;
 }
+
+F *generateColission(enum figures figType, arg1,  arg2)
+{
+    LIST *offSet = getOffSet(figType, arg1, arg2);
+
+    if(!offSet)
+        return NULL;
+
+    COORD *pos = initCoord(0, 0, 0);
+
+    if(!pos)
+        return NULL;
+
+    COORD *rot = initCoord(0, 0, 0);
+
+    if(!rot)
+    {
+        free(pos);
+        freeList(&offSet,free);
+        return NULL;
+    }
+
+    F *newF = initFigure(offSet,pos,rot,f);
+
+    return newF;
+}
+
+LIST *getOffSet(enum figures figType, float arg1, float arg2)
+{
+    switch(figType)
+    {
+        case TRIANGLE:
+            return triangleOffSet(arg1, arg2);
+        case RECTANGLE:
+            return rectangleOffSet(arg1, arg2);
+        case POLYGON:
+            return polygonOffSet(arg1, arg2);
+        case LINE:
+            return lineOffSet(arg1);
+        case CIRCLE:
+            return circleOffSet(arg1, arg2);
+        case OVAL:
+            // Not yet implemented
+            return NULL;
+            //break;
+        default:
+            return NULL;
+    }
+}
+
+/*
+
+Funciones de construccion de secuencias de animacion para un objeto, construccion de objetos 
+
+*/
+
