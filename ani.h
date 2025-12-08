@@ -166,16 +166,6 @@ typedef struct trigger
                                 // a un estado distinto de dibujado
 }TRIGGER;
 
-typedef struct fig
-{
-    struct list *offset;            // Puntos a dibujar de la figura calculados mediante un offset
-                                    // definido por el struct coordenada   
-    struct coordinates *relPos;     // Las figuras de un objeto necesitan una posicion relativa para dibujarse
-    struct coordinates *localRot;   // Ademas para evitar funciones como "trianguloVolteado" o "rombo"
-                                    // Podemos darle una rotacion inicial   
-    enum figures f;                 // Figura a dibujar;
-}F;
-
 typedef struct coordinates
 {
     float x, y, z;
