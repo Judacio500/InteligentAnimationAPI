@@ -2,10 +2,14 @@
 #define ANI_H
 
 #include<stdio.h>
-#include <string.h> 
-#include "list.h" 
-#include "graph.h" 
-#include "hash.h"  
+#include<string.h> 
+#include<math.h>
+#include"list.h" 
+#include"graph.h" 
+#include"hash.h"  
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
 
 /*
     Para el desarrollo de esta API se tiene el siguiente planteamiento:
@@ -57,7 +61,7 @@ typedef void (*Behavior)(struct object *self, int step, void *params, void *env)
 typedef enum figures
 {
     TRIANGLE,
-    SQUARE,
+    RECTANGLE,
     POLYGON,
     LINE,
     CIRCLE,
@@ -142,7 +146,7 @@ typedef struct transform
                                     // dependiendo del formato de dibujado
     struct fig *colissionBox;       // Colision del objeto por si hay interaccion en la animacion
                                     // vive aqui para que las cajas de colision tambien escalen con el objeto
-                                    // como ambos vienen de figuras que se calculan con offset sera un escalado perfecto
+                                    // como ambos vienen de figuras que se calculan con offSet sera un escalado perfecto
 }TRANSFORM;
 
 
@@ -168,7 +172,7 @@ typedef struct trigger
 
 typedef struct fig
 {
-    struct list *offset;            // Puntos a dibujar de la figura calculados mediante un offset
+    struct list *offSet;            // Puntos a dibujar de la figura calculados mediante un offSet
                                     // definido por el struct coordenada   
     struct coordinates *relPos;     // Las figuras de un objeto necesitan una posicion relativa para dibujarse
     struct coordinates *localRot;   // Ademas para evitar funciones como "trianguloVolteado" o "rombo"

@@ -39,7 +39,7 @@ F *initFigure(LIST *pointOffSet, COORD *localPosition, COORD *localRotation, enu
     if(!newF)
         return NULL;
 
-    newF->offset = pointOffSet;
+    newF->offSet = pointOffSet;
     newF->f = f;
 
     if (localPosition)
@@ -300,44 +300,145 @@ int addColission(OBJECT *o, F *colissionBox)
 
 LIST *rectangleOffSet(float width, float length)
 {
-    LIST *offset = NULL;
-    float halfX = length/2;
-    float halfY = width/2;
+    LIST *offSet = NULL;
+    float halfX = length / 2.0f;
+    float halfY = width / 2.0f;
 
     // Vertice 1: Esquina superior izquierda
-    handleInsert(&offset,initCoord(-halfX, halfY, 0),0,SIMPLE);
+    handleInsert(&offSet, initCoord(-halfX, halfY, 0), 0, SIMPLE);
 
     // Vertice 2: Esquina superior derecha
-    handleInsert(&offset,initCoord(halfX, halfY, 0),0,SIMPLE);
+    handleInsert(&offSet, initCoord(halfX, halfY, 0), 0, SIMPLE);
     
     // Vertice 3: Esquina inferior derecha
-    handleInsert(&offset,initCoord(halfX, -halfY, 0),0,SIMPLE);
+    handleInsert(&offSet, initCoord(halfX, -halfY, 0), 0, SIMPLE);
     
     // Vertice 4: Esquina inferior izquierda
-    handleInsert(&offset,initCoord(-halfX, -halfY, 0),0,SIMPLE);
+    handleInsert(&offSet, initCoord(-halfX, -halfY, 0), 0, SIMPLE);
 
-    return offset;
+    return offSet;
 }
 
-LIST *polygonOffSet(int sections, float radius)
+LIST *polygonOffSet(int segments, float radius)
 {
-    LIST *offset = NULL;
-    float half = side/2;
+    LIST *offSet = NULL;
 
+    if (segments < 3) segments = 3;
+
+    float angleStep = (2.0f * M_PI) / segments;
+
+    for(int i = 0; i < segments; i++)
+    {
+        float theta = i * angleStep;
+        // Calculamos offSet (eliminado localX/Y para centrar en 0,0)
+        float x = cosf(theta) * radius; 
+        float y = sinf(theta) * radius;
+        
+        handleInsert(&offSet, initCoord(x, y, 0), 0, SIMPLE);
+    }
+
+    return offSet;
+}
+
+LIST *circleOffSet(int smoothness, float radius)
+{
+    LIST *offSet = NULL;
+
+    if(smoothness <= 0)
+        return NULL;
+
+    int segments = smoothness * 70; // Tu logica de suavizado
+
+    float angleStep = (2.0f * M_PI) / segments;
+
+    for(int i = 0; i < segments; i++)
+    {
+        float theta = i * angleStep;
+        // Calculamos offSet (eliminado localX/Y para centrar en 0,0)
+        float x = cosf(theta) * radius; 
+        float y = sinf(theta) * radius;
+        
+        handleInsert(&offSet, initCoord(x, y, 0), 0, SIMPLE);
+    }
+
+    return offSet;
+}
+
+LIST *lineOffSet(float length)
+{
+    LIST *offSet = NULL;
+    float half = length / 2.0f;
+
+    // Linea horizontal unitaria (Inicio)
+    handleInsert(&offSet, initCoord(-half, 0, 0), 0, SIMPLE);
+
+    // Linea horizontal unitaria (Fin)
+    handleInsert(&offSet, initCoord(half, 0, 0), 0, SIMPLE);
+
+    return offSet;
+}
+
+LIST *triangleOffSet(float base, float height)
+{
+    LIST *offSet = NULL;
     
+    float halfBase = base / 2.0f;
+    float halfHeight = height / 2.0f;
 
-    return offset;
+    // Vertice 1: Punta superior (Centrada)
+    handleInsert(&offSet, initCoord(0, halfHeight, 0), 0, SIMPLE);
+
+    // Vertice 2: Esquina inferior izquierda
+    handleInsert(&offSet, initCoord(-halfBase, -halfHeight, 0), 0, SIMPLE);
+    
+    // Vertice 3: Esquina inferior derecha
+    handleInsert(&offSet, initCoord(halfBase, -halfHeight, 0), 0, SIMPLE);
+
+    return offSet;
 }
 
-// Haciendo un merge
-
-LIST *lineOffSet()
+F *generateFigure(enum figures f, float arg1, float arg2, float localX, float localY, float zPriority, float rotX, float rotY, float rotZ)
 {
-    LIST *offsets = NULL;
+    LIST *offSet = NULL;
 
-    // Linea horizontal unitaria
-    insertList(&offsets, initCoord(-0.5f, 0.0f, 0.0f), 0);
-    insertList(&offsets, initCoord(0.5f, 0.0f, 0.0f), 0);
+    switch(f)
+    {
+        case TRIANGLE:
+            offSet = triangleOffSet(arg1, arg2);
+            break;
+        case RECTANGLE:
+            offSet = rectangleOffSet(arg1, arg2);
+            break;
+        case POLYGON:
+            offSet = polygonOffSet(arg1, arg2);
+            break;
+        case LINE:
+            offSet = lineOffSet(arg1);
+            break;
+        case CIRCLE:
+            offSet = circleOffSet(arg1, arg2);
+            break;
+        case OVAL:
+            // Not yet implemented
+            return NULL;
+            //break;
+    }
 
-    return offsets;
+    COORD *pos = initCoord(localX, localY, zPriority);
+
+    if(!pos)
+        return NULL;
+
+    COORD *rot = initCoord(rotX, rotY, rotZ);
+
+    if(!rot)
+    {
+        free(pos);
+        freeList(&offSet,free);
+        return NULL;
+    }
+
+    F *newF = initFigure(offSet,pos,rot,f);
+
+    return newF;
 }
