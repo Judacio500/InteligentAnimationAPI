@@ -32,7 +32,20 @@ COORD *initCoord(float x, float y, float z)
     return newC;
 }
 
-F *initFigure(LIST *pointOffSet, COORD *localPosition, COORD *localRotation, enum figures f)
+DESIGN *initDesign(float r, float g, float b, float transparency)
+{
+    DESIGN *newD = (DESIGN*)malloc(sizeof(DESIGN));
+
+    if(!newD)
+        return NULL;
+
+    newD->color = initCoord(r,g,b);
+    newD->transparency = transparency;
+
+    return newD;
+}
+
+F *initFigure(LIST *pointOffSet, DESIGN *des, COORD *localPosition, COORD *localRotation, enum figures f)
 {
     F *newF = (F*)malloc(sizeof(F));
     
@@ -41,6 +54,14 @@ F *initFigure(LIST *pointOffSet, COORD *localPosition, COORD *localRotation, enu
 
     newF->offSet = pointOffSet;
     newF->f = f;
+    if(des)
+    {
+        newF->color = des;
+    }
+    else
+    {
+        newF->color = initDesign(1,0,0,1); // Rojo solido por defecto
+    }
 
     if (localPosition)
     {
@@ -74,7 +95,7 @@ F *initFigure(LIST *pointOffSet, COORD *localPosition, COORD *localRotation, enu
     return newF;
 }
 
-TRIGGER *initTrigger(Check check, char *targetStatusKey)
+TRIGGER *initTrigger(Check check, STATUS *targetStatus)
 {
     TRIGGER *newT = (TRIGGER*)malloc(sizeof(TRIGGER));
     
@@ -82,11 +103,7 @@ TRIGGER *initTrigger(Check check, char *targetStatusKey)
         return NULL;
 
     newT->check = check;
-    
-    if(targetStatusKey)
-        newT->targetStatusKey = strdup(targetStatusKey);
-    else
-        newT->targetStatusKey = NULL;
+    newT->targetStatus = targetStatus;
 
     return newT;
 }
@@ -164,9 +181,11 @@ OBJECT *initObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *
         return NULL;
     }
 
-    newO->figures = figures;
+    newO->figures = figures;    
+    calculateDimensions(newO);
     newO->statusStack = NULL;  // La pila de estados esta vacia 
     newO->activeStatus = NULL;
+    newO->custom = NULL;
     newO->status = ALIVE; 
 
     return newO;
@@ -198,7 +217,7 @@ LAYER *initLayer(char *layerName, Behavior initialBehavior)
 
     newL->objects = initHash(0); 
 
-    newL->initialBehavior =  !initialBehavior ? idle : initialBehavior;    // Si se define un estado inicial se aplica
+    newL->initialBehavior =  !initialBehavior ? Idle : initialBehavior;    // Si se define un estado inicial se aplica
                                                                            // si no se le da el estado Idle
 
     return newL;
@@ -212,7 +231,9 @@ PANEL *initPanel(SCENE *camera)
 
     newP->currentScene = camera;
     newP->layers = initHash(0);
-    LAYER *backGround = initLayer("BACKGROUND", NULL);
+    newP->allObjects = NULL;
+    LAYER *backGround = initLayer("BACKGROUND", Static);    // Capa base para cualquier panel, BACKGROUND reservado con comportamiento Static
+                                                            // Lo que quiere decir que toda estructuraa inicializada aqui no tiene movimiento ni interaccion con la fisica del mundo
     
     if(backGround)
         saveKey(&newP->layers, backGround->layerName, backGround);
@@ -259,12 +280,13 @@ int addPanel(ANI *animation, PANEL *p)  // Esta funcion corresponde a la punta d
     return handleAppend(&animation->panels,p,1,DOUBLE); // Insercion en lista doblemente enlazada
 }
 
-int addObject(LAYER *l, OBJECT *o)
+int addObject(PANEL *p, LAYER *l, OBJECT *o)
 {
-    if(!l || !o) 
-        return -1;
+    if(!p || !l || !o) return -1;
+    
+    saveKey(&l->objects, o->key, o);
 
-    return saveKey(&l->objects, o->key, o); 
+    return handleInsert(&p->allObjects, o, 0, SIMPLE); 
 }
 
 int addLayer(PANEL *p, LAYER *l)
@@ -397,7 +419,7 @@ LIST *triangleOffSet(float base, float height)
     return offSet;
 }
 
-F *generateFigure(enum figures figType, float arg1, float arg2, float localX, float localY, float zPriority, float rotX, float rotY, float rotZ)
+F *generateFigure(enum figures figType, DESIGN *des, float arg1, float arg2, float localX, float localY, float zPriority, float rotX, float rotY, float rotZ)
 {
     LIST *offSet = getOffSet(figType, arg1, arg2);
     
@@ -418,7 +440,7 @@ F *generateFigure(enum figures figType, float arg1, float arg2, float localX, fl
         return NULL;
     }
 
-    F *newF = initFigure(offSet,pos,rot,figType);
+    F *newF = initFigure(offSet,des,pos,rot,figType);
 
     return newF;
 }
@@ -456,7 +478,7 @@ F *generateColission(enum figures figType, float arg1, float arg2)
         return NULL;
     }
 
-    F *newF = initFigure(offSet,pos,rot,figType);
+    F *newF = initFigure(offSet,NULL,pos,rot,figType);
 
     return newF;
 }
@@ -548,7 +570,7 @@ PANEL *generatePanelFromObjects(SCENE *camera, LIST *objects)
             }
         }
 
-        addObject(targetLayer, obj);
+        addObject(newP, targetLayer, obj);
 
         current = current->next;
     }
@@ -619,7 +641,7 @@ OBJECT *instanceObject(char *objectName, char *layerName, TRANSFORM *initial, LI
     if(!newObj) return NULL;
 
     // Cargar el estado base 
-    STATUS *idleSt = getIdle();
+    STATUS *idleSt = getBase(Idle);
     if(idleSt)
     {
         // Insertamos el IDLE en la pila (Bottom)
@@ -637,12 +659,312 @@ OBJECT *instanceObject(char *objectName, char *layerName, TRANSFORM *initial, LI
 // Instanciador del comportamiento inicial IDLE
 // sin secuencia de dibujo ni parametros extra
 // (el usuario puede cambiar el IDLE de un objeto especifico si asi lo quiere)
-STATUS *getIdle()
+STATUS *getBase(Behavior func)
 {
-    return generateStatus(idle,NULL,NULL);
+    return generateStatus(func,NULL,NULL);
 }
 
-void idle(struct object *self, int step, void *params, void *env) // Solo declarada no definida
+int checkGround(OBJECT *self, void *env)
 {
-    return;
+    if(!self || !env) 
+        return 0;
+    
+    PANEL *p = (PANEL*)env;
+    
+    float myY = self->t->globalPos->y;
+    float myBottom = myY - self->maxY;
+    float myX = self->t->globalPos->x;
+
+    LIST *iter = p->allObjects; 
+    while(iter)
+    {
+        OBJECT *other = (OBJECT*)iter->data;
+        
+        // Ignorar self y objetos sin colision
+        if(other != self && other->t->colissionBox)
+        {
+            float otherX = other->t->globalPos->x;
+            float otherMaxX = other->maxX; 
+            
+            if (fabs(myX - otherX) < (self->maxX + otherMaxX))
+            {
+                float otherTop = other->t->globalPos->y + other->maxY;
+                float penetration = otherTop - myBottom;
+
+                if (penetration >= 0 && penetration < 10) 
+                {
+                    self->t->globalPos->y = otherTop + self->maxY;
+                    return 1; 
+                }
+            }
+        }
+        iter = iter->next;
+    }
+    return 0;
+}
+
+void calculateDimensions(OBJECT *obj)
+{
+    if (!obj || !obj->figures || !obj->t) 
+    {
+
+        if(obj && obj->t && obj->t->scale) 
+        {
+            obj->maxX = 0.5f * fabs(obj->t->scale->x);
+            obj->maxY = 0.5f * fabs(obj->t->scale->y);
+        }
+        return;
+    }
+
+    float minX = 100000.0f, maxX = -100000.0f;
+    float minY = 100000.0f, maxY = -100000.0f;
+    int pointsFound = 0;
+
+    LIST *figIter = obj->figures;
+    while(figIter)
+    {
+        F *fig = (F*)figIter->data;
+        if(fig && fig->offSet)
+        {
+            LIST *pIter = fig->offSet;
+            while(pIter)
+            {
+                COORD *p = (COORD*)pIter->data;
+                
+
+                float effectiveX = p->x + fig->relPos->x;
+                float effectiveY = p->y + fig->relPos->y;
+
+                if(effectiveX < minX) minX = effectiveX;
+                if(effectiveX > maxX) maxX = effectiveX;
+                if(effectiveY < minY) minY = effectiveY;
+                if(effectiveY > maxY) maxY = effectiveY;
+                
+                pointsFound = 1;
+                pIter = pIter->next;
+            }
+        }
+        figIter = figIter->next;
+    }
+
+    if(!pointsFound)
+    {
+        obj->maxX = 0.5f * fabs(obj->t->scale->x);
+        obj->maxY = 0.5f * fabs(obj->t->scale->y);
+    } 
+    else 
+    {
+        float rawWidth = maxX - minX;
+        float rawHeight = maxY - minY;
+        
+        obj->maxX = (rawWidth / 2.0f) * fabs(obj->t->scale->x);
+        obj->maxY = (rawHeight / 2.0f) * fabs(obj->t->scale->y);
+    }
+}
+
+int checkTriggers(OBJECT *self, GP *params, void *env)
+{
+    if(!params || !params->triggers) // Un objeto sin triggers no puede hacer cambios
+        return 0;
+
+    LIST *triggers = params->triggers;
+
+    while(triggers)
+    {
+        TRIGGER *t = (TRIGGER*)triggers->data;
+
+        if(t->check(self,env))
+        {
+            STATUS *nextStatus = (STATUS*)t->targetStatus;
+
+            if(!nextStatus) // Si no tenemos otro comportamiento en ese trigger entonces hacemos pop del comportamiento actual 
+            {
+                popData(&self->statusStack);
+            }
+            else
+            {
+                handleInsert(&self->statusStack,nextStatus,0,SIMPLE);
+                self->activeStatus = nextStatus;
+            }
+
+            self->currentFrame = NULL;
+            return 1;
+        }
+        triggers = triggers->next;
+    }
+
+    return 0;
+}
+
+void physicsUpdate(OBJECT *self, GP *p)
+{
+    if(!self || !self->t || !p) 
+        return;
+
+    self->t->globalPos->x += p->speedX;
+    self->t->globalPos->y += p->speedY;
+
+    p->speedY -= p->gravity;
+    p->speedX *= p->friction; 
+    // Importante aqui recalcar que p->friction es una multiplicacion
+    // por lo que el frenado de la fricción es proporcional
+    // lo que haria que nunca dejaramos de movernos
+    // por eso:
+
+    if(fabs(p->speedX) < 0.01) // Al llegar a cierta velocidad minima  
+        p->speedX = 0;         // Matamos la velocidad por completo
+
+    p->stepCounter++;
+}
+
+int advanceAutomata(OBJECT *obj)
+{
+
+    if(!obj || !obj->activeStatus || !obj->activeStatus->animSequence) // Nuestra libreria usa advanceAutomata responsablemente
+        return -1;                                                     // pero al ser utilizable por terceros y poder implementar cerebros especificos
+                                                                       // es mejor tener un check de seguridad aqui tambien
+
+    GRAPH *currentClip = obj->activeStatus->animSequence;              // Nuestra secuencia actual
+
+    if(!obj->currentFrame) 
+    {
+        char startKey[60];
+        
+        sprintf(startKey, "%s_0", currentClip->name); 
+
+        NODE *firstFrame = hashNode(currentClip, startKey);
+        
+        if(firstFrame) 
+        {
+            obj->currentFrame = firstFrame;
+            obj->currentFrame->cost = 0; // Reset del stepCounter interno del nodo
+        } 
+        else 
+        {
+            // Si no encuentra el frame 0, no podemos animar.
+            return -1; 
+        }
+    }
+
+    obj->currentFrame->cost += 1.0f;
+    EDGE *path = obj->currentFrame->firstEdge; 
+    
+    if (path) 
+    {
+        if (obj->currentFrame->cost >= path->weight) 
+        {
+            obj->currentFrame->cost = 0;
+            obj->currentFrame = path->destinationNode;
+        }
+    }
+   
+    return 0;
+}
+
+void Static(struct object *self, int step, void *params, void *env) // Estado para objetos inamovibles en la animacion
+{                                                                   // No actualizan fisicas ni reciben triggers, solo existen en el
+                                                                    // background
+    if(self->activeStatus && self->activeStatus->animSequence)
+        advanceAutomata(self);
+}
+
+void Idle(struct object *self, int step, void *params, void *env)
+{
+    GP *p = (GP*)params;
+
+    // Revisamos si es necesario actualizar los estados
+    // si sucede un push interrumpimos IDLE y pasamos al siguiente
+    // estado
+    if(checkTriggers(self, p, env))     // checkTriggers es parte de todos los cerebros base para darle al usuario la libertad 
+        return;                         // de cambiar de estados a partir de triggers definidos por el usuario
+
+    p->friction = 0.8f; // Si el ultimo estado era correr o caminar
+                        // frenamos esa velocidad
+    
+    physicsUpdate(self, p); // Actualizamos las fisicas
+
+    checkGround(self, env);
+    
+    // Y si nuestro idle tiene una animacion avanzamos el frame
+    if(self->activeStatus && self->activeStatus->animSequence)
+         advanceAutomata(self);
+}
+
+void Walk(struct object *self, int step, void *params, void *env)
+{
+    GP *p = (GP*)params;
+
+    if(checkTriggers(self, p, env)) 
+        return;
+
+    // Aqui la velocidad X ya viene seteada en params por el usuario
+    // actualizamos la friccion a 1, de esta forma no frenamos
+    p->friction = 1.0f; 
+
+    physicsUpdate(self, p);
+    checkGround(self, env);
+
+    if(self->activeStatus && self->activeStatus->animSequence)
+         advanceAutomata(self);
+}
+
+
+void Jump(struct object *self, int step, void *params, void *env)
+{
+    GP *p = (GP*)params;
+
+    if(checkTriggers(self, p, env)) 
+        return;
+    
+    // Se asume cambio de 
+
+    p->friction = 0.95f;
+
+    physicsUpdate(self, p);
+
+    if (p->speedY < 0) // Trigger especial para aterrizaje despues de un salto
+    {
+        if(checkGround(self, env)) 
+        {
+             p->speedY = 0;
+             popData(&self->statusStack);
+
+             if(self->statusStack) 
+             {
+                 self->activeStatus = (STATUS*)self->statusStack->data;
+             } 
+             else 
+             {
+                 self->activeStatus = NULL; 
+             }
+
+             self->currentFrame = NULL; 
+             return;
+        }
+    }
+
+    if(self->activeStatus && self->activeStatus->animSequence)
+         advanceAutomata(self);
+}
+
+void Fall(OBJECT *self, int step, void *params, void *env)
+{
+    GP *p = (GP*)params;
+    
+    physicsUpdate(self, p);
+
+    if(checkGround(self, env))
+    {
+        p->speedY = 0;
+        
+        STATUS *idleSt = getBase(Idle);
+        handleInsert(&self->statusStack, idleSt, 0, SIMPLE);
+        self->activeStatus = idleSt;
+        return;
+    }
+
+    if(checkTriggers(self, p, env)) return;
+
+    if(self->activeStatus && self->activeStatus->animSequence)
+         advanceAutomata(self);
 }

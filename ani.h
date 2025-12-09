@@ -94,13 +94,15 @@ typedef struct animation
 typedef struct panel
 {
     struct scene *currentScene; // Cuadro a dibujar AKA Camara 
-    struct hash *layers;    // Capas en este panel
+    struct hash *layers;        // Capas en este panel
+    struct list *allObjects;    // Objetos totales del panel
 }PANEL;
 
 typedef struct layer
 {
     char layerName[30];
     struct hash *objects;       // Lo que dibujamos
+                                // Para modificaciones
     Behavior initialBehavior;   // Todos los objetos empiezan con un comportamiento IDLE
                                 // que en la API se define como a la espera de un trigger
                                 // ese comportamiento se puede cambiar en initialBehavior
@@ -134,6 +136,9 @@ typedef struct object
     enum animationCycle status;      // Auxiliar para la generacion de animaciones
     struct statusPair *activeStatus; 
     struct node *currentFrame;
+    float maxY;
+    float maxX;
+    void *custom;              
 }OBJECT;
 
 typedef struct statusPair
@@ -153,21 +158,27 @@ typedef struct transform
                                     // esto nos permitiria mostrar en la animacion el perfil de algo
                                     // sin la necesidad de definir como se dibuja, aunque puede no verse bien
                                     // dependiendo del formato de dibujado
+
+    // Estas estructuras deberian ser listas ya que un solo objeto puede tener multiples colisiones o areas 
+    // de vision, de ruido, de lo que quiera el usuario definir como area + los parametros con los que lo defina
+    // sin embargo por tiempo y solo para mostrar su funcionamiento se dejaron unicamente
     struct fig *colissionBox;       // Colision del objeto por si hay interaccion en la animacion
                                     // vive aqui para que las cajas de colision tambien escalen con el objeto
                                     // como ambos vienen de figuras que se calculan con offSet sera un escalado perfecto
+    struct fig *effectArea;         // tecnicamente una colision tambien, separada para showcase
 }TRANSFORM;
 
 typedef struct trigger 
 {
     Check check;                // El automata no sabe que acciones se deben tomar en un prefabricado
                                 // pero se le puede decir de que estar pendiente
-    char *targetStatusKey;      // Como nuestro grafo tiene un hash un trigger puede estar siempre ligado
-                                // a un estado distinto de dibujado
+    statusPair *targetStatus;   // Un trigger debe siempre permitirnos hacer un cambio de estado
+                                // asi targetStatus sea NULL podriamos hacer un pop a la pila
 }TRIGGER;
 
 typedef struct fig
 {
+    struct design *color;           // Parametros de diseño, actualmente solo color RGB + Transparencia
     struct list *offSet;            // Puntos a dibujar de la figura calculados mediante un offSet
                                     // definido por el struct coordenada   
     struct coordinates *relPos;     // Las figuras de un objeto necesitan una posicion relativa para dibujarse
@@ -176,26 +187,50 @@ typedef struct fig
     enum figures f;                 // Figura a dibujar;
 }F;
 
+typedef struct design
+{
+    struct coordinates *color;      // RGB del color
+    float transparency;             // 4to parametro de GLColor
+
+    /*
+        Aqui pueden ir mas cosas, como mi libreria de assets, pero eso se dejo fuera por tiempo 
+    */
+
+}DESIGN;
+
 typedef struct coordinates
 {
     float x, y, z;
 }COORD;
 
+typedef struct genericParams
+{
+    float speedX;       // Unidades por frame en X
+    float speedY;       // Unidades por frame en Y
+    float friction;         
+    float gravity;
+
+    int stepCounter;    // Cuenta cuántos frames lleva en este estado
+    int durationLimit;  // Si llega a este numero, hace POP automático (para OneShots)
+    struct list *triggers; // Lista de (TRIGGER*)    
+}GP;
+
 COORD *initCoord(float x, float y, float z);
 F *initFigure(LIST *pointOffSet, COORD *localPosition, COORD *localRotation, enum figures f);
-TRIGGER *initTrigger(Check check, char *targetStatusKey);
+TRIGGER *initTrigger(Check check, STATUS *targetStatus);
 TRANSFORM *initPhysics(F *colision, COORD *pos, COORD *scale, COORD *rotation);
 OBJECT *initObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *figures);
 SCENE *initScene(float width, float height);
 LAYER *initLayer(char *layerName, Behavior initialBehavior);
 PANEL *initPanel(SCENE *camera);
+DESIGN *initDesign(float r, float g, float b, float transparency);
 ANI *initAnimation();
 int destroyCoord(void *data);
 int addPanel(ANI *animation, PANEL *p);
 int addLayer(PANEL *p, LAYER *l);
-int addObject(LAYER *l, OBJECT *o);
+int addObject(PANEL *p, LAYER *l, OBJECT *o);
 int addColission(OBJECT *o, F *colissionBox);
-F *generateFigure(enum figures f, float arg1, float arg2, float localX, float localY, float zPriority, float rotX, float rotY, float rotZ);
+F *generateFigure(enum figures f, DESIGN *des, float arg1, float arg2, float localX, float localY, float zPriority, float rotX, float rotY, float rotZ);
 LIST *triangleOffSet(float base, float height);
 LIST *lineOffSet(float length);
 LIST *circleOffSet(int smoothness, float radius);
@@ -204,12 +239,23 @@ LIST *rectangleOffSet(float width, float length);
 LIST *getOffSet(enum figures figType, float arg1, float arg2);
 F *generateColission(enum figures figType, float arg1, float arg2);
 GRAPH *generateBluePrint(char *sequenceName, QUEUE *objectSequence, int type);
-void idle(struct object *self, int step, void *params, void *env);
 STATUS *generateStatus(Behavior func, struct graph *animationSequence, void *params);
 int pushFrame(QUEUE *sequence, OBJECT *frameObj);
 int pushFigure(LIST **figureList, F *fig);
 PANEL *generatePanelFromObjects(SCENE *camera, LIST *objects);
 OBJECT *instanceObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *figures, GRAPH *bluePrint);
-STATUS *getIdle();
+STATUS *getBase(Behavior func);
+void calculateDimensions(OBJECT *obj);
+
+// Cerebros, fisicas y triggers
+void Static(struct object *self, int step, void *params, void *env);
+void Idle(struct object *self, int step, void *params, void *env);
+void Walk(struct object *self, int step, void *params, void *env);
+void Jump(struct object *self, int step, void *params, void *env);
+void Fall(struct object *self, int step, void *params, void *env);
+int advanceAutomata(OBJECT *obj);
+void physicsUpdate(OBJECT *self, GP *p);
+int checkTriggers(OBJECT *self, GP *params, void *env);
+int checkGround(OBJECT *self, void *env);
 
 #endif
