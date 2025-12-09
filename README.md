@@ -1,5 +1,6 @@
 ## 🟦 ANI — Motor de Animación 2D (C)
 
+#### Proyecto unificado con Introduccion a la Inteligencia Artificial
 #### Por lo siguiente se garantiza que el proyecto actual constituye el +70% del proyecto:
 
 ANI es un motor de animación 2D modular inspirado en `matplotlib.animation`, diseñado desde cero en C.  
