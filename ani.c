@@ -107,7 +107,7 @@ TRANSFORM *initPhysics(F *colision, COORD *pos, COORD *scale, COORD *rotation)
     return newT;
 }
 
-OBJECT *initObject(char *objectName, char *objectLayer, TRANSFORM *initial, LIST *figures, GRAPH *bluePrint, Behavior brain)
+OBJECT *initObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *figures)
 {
     OBJECT *newO = (OBJECT*)malloc(sizeof(OBJECT));
 
@@ -120,11 +120,11 @@ OBJECT *initObject(char *objectName, char *objectLayer, TRANSFORM *initial, LIST
         strncpy(newO->key, "unnamed", 29);
     newO->key[29] = '\0'; 
 
-    if(objectLayer)
-        strncpy(newO->layerKey, objectLayer, 29);
+    if(objectName)
+        strncpy(newO->layerKey, layerName, 29);
     else
-        strncpy(newO->layerKey, "default", 29);
-    newO->layerKey[29] = '\0';
+        strncpy(newO->layerKey, "unnamed", 29);
+    newO->layerKey[29] = '\0'; 
 
     if(!initial)
     {
@@ -166,8 +166,8 @@ OBJECT *initObject(char *objectName, char *objectLayer, TRANSFORM *initial, LIST
 
     newO->figures = figures;
     newO->bluePrint = bluePrint;
-    newO->currentStatus = NULL; 
-    newO->brain = brain;
+    newO->statusStack = NULL;  // La pila de estados esta vacia 
+    newO->activeStatus = NULL;
     newO->status = ALIVE; 
 
     return newO;
@@ -185,7 +185,7 @@ SCENE *initScene(float width, float height)
     return newS;
 }
 
-LAYER *initLayer(char *layerName)
+LAYER *initLayer(char *layerName, Behavior initialBehavior)
 {
     LAYER *newL = (LAYER*)malloc(sizeof(LAYER));
     if(!newL)
@@ -198,6 +198,9 @@ LAYER *initLayer(char *layerName)
     newL->layerName[29] = '\0';
 
     newL->objects = initHash(0); 
+
+    newL->initialBehavior =  !initialBehavior ? getIdle() : initialBehavior;    // Si se define un estado inicial se aplica
+                                                                                // si no se le da el estado Idle
 
     return newL;
 }
@@ -257,31 +260,20 @@ int addPanel(ANI *animation, PANEL *p)  // Esta funcion corresponde a la punta d
     return handleAppend(&animation->panels,p,1,DOUBLE); // Insercion en lista doblemente enlazada
 }
 
-// Añadir una capa a un panel existente
+int addObject(LAYER *l, OBJECT *o)
+{
+    if(!l || !o) 
+        return -1;
+
+    return saveKey(&l->objects, o->key, o); 
+}
+
 int addLayer(PANEL *p, LAYER *l)
 {
     if(!p || !l) 
         return -1;
     
-    return saveKey(&p->layers, l->layerName, l); 
-}
-
-// Añadir un objeto a una capa específica
-int addObject(PANEL *l, OBJECT *o)
-{
-    if(!l || !o) 
-        return -1;
-
-    return saveKey(&l->objects, o->key, o);
-}
-
-// Añadir figura a un objeto
-int addFigure(OBJECT *o, F *f)
-{
-    if(!o || !f)
-        return -1;
-
-    return handleInsert(o->figures, f, 0, SIMPLE);
+        return saveKey(&p->layers, l->layerName, l);
 }
 
 /*
@@ -299,11 +291,11 @@ int addFigure(OBJECT *o, F *f)
 
 int addColission(OBJECT *o, F *colissionBox)
 {
-    if(!o || !colissionBox)
+    if(!o || !o->t) 
         return -1;
     
     o->t->colissionBox = colissionBox;
-
+    
     return 0;
 }
 
@@ -487,3 +479,156 @@ Funciones de construccion de secuencias de animacion para un objeto, construccio
 
 */
 
+
+
+STATUS *generateStatus(Behavior func, struct graph *animationSequence, void *params)
+{
+    STATUS *newStatus = (STATUS*)malloc(sizeof(STATUS));
+
+    if(!newStatus)
+        return NULL;
+
+    newStatus->func = func;
+    newStatus->animSequence = animationSequence;
+    newStatus->params = params;
+
+    return newStatus;
+}
+
+int pushFrame(QUEUE *sequence, OBJECT *frameObj)
+{
+    if(!sequence || !frameObj)
+        return -1;
+    
+    return handleAppend(&sequence, frameObj, 1.0f, SIMPLE);
+}
+
+int pushFigure(LIST **figureList, F *fig)
+{
+    if(!fig)
+        return -1;
+
+    return handleInsert(figureList, fig, 0, SIMPLE);
+}
+
+PANEL *generatePanelFromObjects(SCENE *camera, LIST *objects)
+{
+    PANEL *newP = initPanel(camera);
+    if(!newP) return NULL;
+
+    LIST *current = objects;
+    while(current)
+    {
+        OBJECT *obj = (OBJECT*)current->data;
+        
+        LAYER *targetLayer = NULL;
+        EHASH *found = hashing(newP->layers, obj->layerKey);
+
+        if(found)
+        {
+            targetLayer = (LAYER*)found->pair;
+        }
+        else
+        {
+            targetLayer = initLayer(obj->layerKey);
+            if(addLayer(newP, targetLayer) < 0)
+            {
+                return NULL;
+            }
+        }
+
+        addObject(targetLayer, obj);
+
+        current = current->next;
+    }
+
+    return newP;
+}
+
+GRAPH *generateBluePrint(char *sequenceName, QUEUE *objectSequence, int type)
+{
+    if(!objectSequence || !objectSequence->first)
+        return NULL;
+
+    GRAPH *newSequence = createGraph(sequenceName, NULL);
+    if(!newSequence) 
+        return NULL;
+
+    LIST *iter = objectSequence->first;
+    int index = 0;
+    char currentKey[50];
+
+    NODE *prevNode = NULL, *firstNode = NULL;
+
+    while(iter)
+    {
+        sprintf(currentKey, "%s_%d", sequenceName, index);
+        
+        void *currentFrameObj = iter->data;
+
+        NODE *newNode = addNode(newSequence, currentKey, currentFrameObj); 
+
+        if(!newNode)
+            return NULL;
+
+        if(index == 0)
+            firstNode = newNode;
+
+        if(prevNode)
+        {
+            addEdgeThrough(prevNode, newNode, 1.0f, 1); //
+        }
+
+        prevNode = newNode;
+        iter = iter->next;
+        index++;
+    }
+
+    if(type == 1 && prevNode && firstNode)
+    {
+        addEdgeThrough(prevNode, firstNode, 1.0f, 1);
+    }
+
+    return newSequence;
+}
+
+OBJECT *instanceObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *figures, GRAPH *bluePrint)
+{
+    /*
+        Asi es, el bluePrint va aqui
+
+        que nada te detenga de ponerle la animacion de un pollo asado bailando a una persona :D
+    
+        AKA Libertad creativa
+
+    */
+
+    OBJECT *newObj = initObject(objectName, layerName, initial, figures);
+    
+    if(!newObj) return NULL;
+
+    // Cargar el estado base 
+    STATUS *idleSt = getIdle();
+    if(idleSt)
+    {
+        // Insertamos el IDLE en la pila (Bottom)
+        handleInsert(&newObj->statusStack, idleSt, 0, SIMPLE);
+        newObj->activeStatus = idleSt;
+
+        if(bluePrint)
+            newObj->avtiveStatus->animSequence = bluePrint;
+
+    }
+
+    return newObj;
+}
+
+// Instanciador del comportamiento inicial IDLE
+// sin secuencia de dibujo ni parametros extra
+// (el usuario puede cambiar el IDLE de un objeto especifico si asi lo quiere)
+STATUS *getIdle()
+{
+    return generateStatus(idle,NULL,NULL);
+}
+
+void idle(struct object *self, int step, void *params, void *env); // Solo declarada no definida

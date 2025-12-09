@@ -124,15 +124,23 @@ typedef struct object
     char layerKey[30];               // Capa en la que se debe dibujar 
     struct transform *t;             // calculo de posicion del objeto
     struct list *figures;            // Componentes a dibujar para formar el objeto 
-    struct graph *bluePrint;         // Conciencia de nuestro objeto, todas las posibilidades del objeto en el mundo
-    struct node *currentStatus;      // donde estoy en el mundo? como me veo respecto a mi posicion?
-                                     // el estado de nuestro automata
-    struct list *brainStack;         // Comportamiento del objeto respecto al entorno
+    struct list *statusStack;        // Comportamiento del objeto respecto al entorno
                                      // en forma de pila para poder hacer cambios acumulativos
                                      // Ejemplo, si detecto salto empujo en la pila esa accion
                                      // caigo al suelo, saco de la pila y puedo seguir corriendo
+                                     // Al tener pares logicos/visuales podemos definir comportamientos
+                                     // precargados, como solo moverse o solo saltar modificables por el entorno
     enum animationCycle status;      // Auxiliar para la generacion de animaciones
+    struct status *activeStatus; 
+    struct node *currentFrame;
 }OBJECT;
+
+typedef struct statusPair
+{
+    Behavior func; // Como se comporta el objeto en el estado actual
+    void *params;  // Parametros de comportamiento
+    struct graph *animSequence; // Como se ve el objeto en el estado actual
+}STATUS;
 
 typedef struct transform
 {
@@ -148,19 +156,6 @@ typedef struct transform
                                     // vive aqui para que las cajas de colision tambien escalen con el objeto
                                     // como ambos vienen de figuras que se calculan con offSet sera un escalado perfecto
 }TRANSFORM;
-
-
-typedef struct brainBehavior 
-{
-    Behavior func; // Como se comporta el objeto en el estado actual
-    void *params;  // Parametros de comportamiento
-
-    /*
-        Me detengo aqui a hacer un parentesis porque con esta estructura podemos hacer un pairing ideal
-        de como funciona mi cerebro actual y con que funciona
-    */
-
-}BRAINB;
 
 typedef struct trigger 
 {
@@ -189,9 +184,9 @@ COORD *initCoord(float x, float y, float z);
 F *initFigure(LIST *pointOffSet, COORD *localPosition, COORD *localRotation, enum figures f);
 TRIGGER *initTrigger(Check check, char *targetStatusKey);
 TRANSFORM *initPhysics(F *colision, COORD *pos, COORD *scale, COORD *rotation);
-OBJECT *initObject(char *objectName, char *objectLayer, TRANSFORM initial, LIST *figures, GRAPH *bluePrint, Behavior brain);
+OBJECT *initObject(char *objectName, char *layerName, TRANSFORM initial, LIST *figures);
 SCENE *initScene(float width, float height);
-LAYER *initLayer(char *layerName);
+LAYER *initLayer(char *layerName, Behavior initialBehavior);
 PANEL *initPanel(SCENE *camera);
 ANI *initAnimation();
 int addPanel(ANI *animation, PANEL *p);
@@ -204,5 +199,18 @@ LIST *lineOffSet(float length);
 LIST *circleOffSet(int smoothness, float radius);
 LIST *polygonOffSet(int segments, float radius);
 LIST *rectangleOffSet(float width, float length);
+LIST *getOffSet(enum figures figType, float arg1, float arg2);
+F *generateColission(enum figures figType, arg1,  arg2);
+GRAPH *generateBluePrint(char *sequenceName, QUEUE *objectSequence, int type);
+void idle(struct object *self, int step, void *params, void *env);
+STATUS *generateStatus(Behavior func, struct graph *animationSequence, void *params);
+int pushFrame(QUEUE *sequence, OBJECT *frameObj);
+int pushFigure(LIST **figureList, F *fig);
+PANEL *generatePanelFromObjects(SCENE *camera, LIST *objects);
+OBJECT *instanceObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *figures, GRAPH *bluePrint);
+
+// Cerebros base
+
+extern LAYER *background;
 
 #endif
