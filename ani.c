@@ -18,9 +18,9 @@ el handling correcto
 
 */
 
-COORD *initCoord(float x, float y, float z)
+CRD *initCoord(float x, float y, float z)
 {
-    COORD *newC = (COORD*)malloc(sizeof(COORD));
+    CRD *newC = (CRD*)malloc(sizeof(CRD));
 
     if(!newC)
         return NULL;
@@ -45,7 +45,7 @@ DESIGN *initDesign(float r, float g, float b, float transparency)
     return newD;
 }
 
-F *initFigure(LIST *pointOffSet, DESIGN *des, COORD *localPosition, COORD *localRotation, enum figures f)
+F *initFigure(LIST *pointOffSet, DESIGN *des, CRD *localPosition, CRD *localRotation, enum figures f)
 {
     F *newF = (F*)malloc(sizeof(F));
     
@@ -108,7 +108,7 @@ TRIGGER *initTrigger(Check check, STATUS *targetStatus)
     return newT;
 }
 
-TRANSFORM *initPhysics(F *colision, COORD *pos, COORD *scale, COORD *rotation)
+TRANSFORM *initPhysics(F *colision, CRD *pos, CRD *scale, CRD *rotation)
 {
     TRANSFORM *newT = (TRANSFORM*)malloc(sizeof(TRANSFORM));
     
@@ -118,7 +118,7 @@ TRANSFORM *initPhysics(F *colision, COORD *pos, COORD *scale, COORD *rotation)
     newT->globalPos = pos;
     newT->scale = scale;
     newT->rotation = rotation;
-    
+    newT->effectArea = NULL;
     newT->colissionBox = colision;
 
     return newT;
@@ -137,7 +137,7 @@ OBJECT *initObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *
         strncpy(newO->key, "unnamed", 29);
     newO->key[29] = '\0'; 
 
-    if(objectName)
+    if(layerName)
         strncpy(newO->layerKey, layerName, 29);
     else
         strncpy(newO->layerKey, "unnamed", 29);
@@ -145,9 +145,9 @@ OBJECT *initObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *
 
     if(!initial)
     {
-        COORD *defPos   = initCoord(0, 0, 0);
-        COORD *defScale = initCoord(1, 1, 1);
-        COORD *defRot   = initCoord(0, 0, 0);
+        CRD *defPos   = initCoord(0, 0, 0);
+        CRD *defScale = initCoord(1, 1, 1);
+        CRD *defRot   = initCoord(0, 0, 0);
 
         if(!defPos || !defScale || !defRot)
         {
@@ -426,12 +426,12 @@ F *generateFigure(enum figures figType, DESIGN *des, float arg1, float arg2, flo
     if(!offSet)
         return NULL;
 
-    COORD *pos = initCoord(localX, localY, zPriority);
+    CRD *pos = initCoord(localX, localY, zPriority);
 
     if(!pos)
         return NULL;
 
-    COORD *rot = initCoord(rotX, rotY, rotZ);
+    CRD *rot = initCoord(rotX, rotY, rotZ);
 
     if(!rot)
     {
@@ -450,7 +450,7 @@ int destroyCoord(void *data)
     if(!data)
         return -1;
 
-    COORD *toDest = (COORD*)data;
+    CRD *toDest = (CRD*)data;
 
     free(toDest);
 
@@ -464,12 +464,12 @@ F *generateColission(enum figures figType, float arg1, float arg2)
     if(!offSet)
         return NULL;
 
-    COORD *pos = initCoord(0, 0, 0);
+    CRD *pos = initCoord(0, 0, 0);
 
     if(!pos)
         return NULL;
 
-    COORD *rot = initCoord(0, 0, 0);
+    CRD *rot = initCoord(0, 0, 0);
 
     if(!rot)
     {
@@ -528,12 +528,12 @@ STATUS *generateStatus(Behavior func, struct graph *animationSequence, void *par
     return newStatus;
 }
 
-int pushFrame(QUEUE *sequence, OBJECT *frameObj)
+int pushFrame(QUEUE **sequence, OBJECT *frameObj)
 {
     if(!sequence || !frameObj)
         return -1;
     
-    return handleAppend(&sequence, frameObj, 1.0f, SIMPLE);
+    return handleAppend(sequence, frameObj, 1.0f, SIMPLE);
 }
 
 int pushFigure(LIST **figureList, F *fig)
@@ -569,6 +569,8 @@ PANEL *generatePanelFromObjects(SCENE *camera, LIST *objects)
                 return NULL;
             }
         }
+
+        OBJ *copy = copyObj(obj);
 
         addObject(newP, targetLayer, obj);
 
@@ -625,7 +627,7 @@ GRAPH *generateBluePrint(char *sequenceName, QUEUE *objectSequence, int type)
     return newSequence;
 }
 
-OBJECT *instanceObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *figures, GRAPH *bluePrint)
+OBJECT *instanceObject(OBJECT *template)
 {
     /*
         Asi es, el bluePrint va aqui
@@ -636,7 +638,7 @@ OBJECT *instanceObject(char *objectName, char *layerName, TRANSFORM *initial, LI
 
     */
 
-    OBJECT *newObj = initObject(objectName, layerName, initial, figures);
+    OBJECT *newObj = initObject(objectName, layerName, NULL, figures);
     
     if(!newObj) return NULL;
 
@@ -729,7 +731,7 @@ void calculateDimensions(OBJECT *obj)
             LIST *pIter = fig->offSet;
             while(pIter)
             {
-                COORD *p = (COORD*)pIter->data;
+                CRD *p = (CRD*)pIter->data;
                 
 
                 float effectiveX = p->x + fig->relPos->x;
@@ -967,4 +969,17 @@ void Fall(OBJECT *self, int step, void *params, void *env)
 
     if(self->activeStatus && self->activeStatus->animSequence)
          advanceAutomata(self);
+}
+
+int *animationSimple(ANI *toModify, SCENE *absolute, LIST *Objects, int frames)
+{
+    if(!toModify)
+        return -1;
+
+    for(int i=0; i<frames; i++)
+    {
+        PANEL *nextPanel = generatePanelFromObjects(absolute,objects);
+        
+        
+    }
 }
