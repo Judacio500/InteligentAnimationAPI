@@ -201,7 +201,7 @@ typedef struct design
 typedef struct coordinates
 {
     float x, y, z;
-}COORD;
+}CRD;
 
 typedef struct genericParams
 {
@@ -215,10 +215,10 @@ typedef struct genericParams
     struct list *triggers; // Lista de (TRIGGER*)    
 }GP;
 
-COORD *initCoord(float x, float y, float z);
-F *initFigure(LIST *pointOffSet, COORD *localPosition, COORD *localRotation, enum figures f);
+CRD *initCoord(float x, float y, float z);
+F *initFigure(LIST *pointOffSet, CRD *localPosition, CRD *localRotation, enum figures f);
 TRIGGER *initTrigger(Check check, STATUS *targetStatus);
-TRANSFORM *initPhysics(F *colision, COORD *pos, COORD *scale, COORD *rotation);
+TRANSFORM *initPhysics(F *colision, CRD *pos, CRD *scale, CRD *rotation);
 OBJECT *initObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *figures);
 SCENE *initScene(float width, float height);
 LAYER *initLayer(char *layerName, Behavior initialBehavior);

@@ -18,9 +18,9 @@ el handling correcto
 
 */
 
-COORD *initCoord(float x, float y, float z)
+CRD *initCoord(float x, float y, float z)
 {
-    COORD *newC = (COORD*)malloc(sizeof(COORD));
+    CRD *newC = (CRD*)malloc(sizeof(CRD));
 
     if(!newC)
         return NULL;
@@ -45,7 +45,7 @@ DESIGN *initDesign(float r, float g, float b, float transparency)
     return newD;
 }
 
-F *initFigure(LIST *pointOffSet, DESIGN *des, COORD *localPosition, COORD *localRotation, enum figures f)
+F *initFigure(LIST *pointOffSet, DESIGN *des, CRD *localPosition, CRD *localRotation, enum figures f)
 {
     F *newF = (F*)malloc(sizeof(F));
     
@@ -108,7 +108,7 @@ TRIGGER *initTrigger(Check check, STATUS *targetStatus)
     return newT;
 }
 
-TRANSFORM *initPhysics(F *colision, COORD *pos, COORD *scale, COORD *rotation)
+TRANSFORM *initPhysics(F *colision, CRD *pos, CRD *scale, CRD *rotation)
 {
     TRANSFORM *newT = (TRANSFORM*)malloc(sizeof(TRANSFORM));
     
@@ -118,7 +118,7 @@ TRANSFORM *initPhysics(F *colision, COORD *pos, COORD *scale, COORD *rotation)
     newT->globalPos = pos;
     newT->scale = scale;
     newT->rotation = rotation;
-    
+    newT->effectArea = NULL;
     newT->colissionBox = colision;
 
     return newT;
@@ -137,7 +137,7 @@ OBJECT *initObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *
         strncpy(newO->key, "unnamed", 29);
     newO->key[29] = '\0'; 
 
-    if(objectName)
+    if(layerName)
         strncpy(newO->layerKey, layerName, 29);
     else
         strncpy(newO->layerKey, "unnamed", 29);
@@ -145,9 +145,9 @@ OBJECT *initObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *
 
     if(!initial)
     {
-        COORD *defPos   = initCoord(0, 0, 0);
-        COORD *defScale = initCoord(1, 1, 1);
-        COORD *defRot   = initCoord(0, 0, 0);
+        CRD *defPos   = initCoord(0, 0, 0);
+        CRD *defScale = initCoord(1, 1, 1);
+        CRD *defRot   = initCoord(0, 0, 0);
 
         if(!defPos || !defScale || !defRot)
         {
@@ -426,12 +426,12 @@ F *generateFigure(enum figures figType, DESIGN *des, float arg1, float arg2, flo
     if(!offSet)
         return NULL;
 
-    COORD *pos = initCoord(localX, localY, zPriority);
+    CRD *pos = initCoord(localX, localY, zPriority);
 
     if(!pos)
         return NULL;
 
-    COORD *rot = initCoord(rotX, rotY, rotZ);
+    CRD *rot = initCoord(rotX, rotY, rotZ);
 
     if(!rot)
     {
@@ -450,7 +450,7 @@ int destroyCoord(void *data)
     if(!data)
         return -1;
 
-    COORD *toDest = (COORD*)data;
+    CRD *toDest = (CRD*)data;
 
     free(toDest);
 
@@ -464,12 +464,12 @@ F *generateColission(enum figures figType, float arg1, float arg2)
     if(!offSet)
         return NULL;
 
-    COORD *pos = initCoord(0, 0, 0);
+    CRD *pos = initCoord(0, 0, 0);
 
     if(!pos)
         return NULL;
 
-    COORD *rot = initCoord(0, 0, 0);
+    CRD *rot = initCoord(0, 0, 0);
 
     if(!rot)
     {
@@ -528,12 +528,12 @@ STATUS *generateStatus(Behavior func, struct graph *animationSequence, void *par
     return newStatus;
 }
 
-int pushFrame(QUEUE *sequence, OBJECT *frameObj)
+int pushFrame(QUEUE **sequence, OBJECT *frameObj)
 {
     if(!sequence || !frameObj)
         return -1;
     
-    return handleAppend(&sequence, frameObj, 1.0f, SIMPLE);
+    return handleAppend(sequence, frameObj, 1.0f, SIMPLE);
 }
 
 int pushFigure(LIST **figureList, F *fig)
@@ -552,7 +552,12 @@ PANEL *generatePanelFromObjects(SCENE *camera, LIST *objects)
     LIST *current = objects;
     while(current)
     {
-        OBJECT *obj = (OBJECT*)current->data;
+        OBJECT *obj = instanceObject((OBJECT*)current->data); // Los paneles son instanciados
+                                                              // todos los objetos insertados son instancias
+                                                              // del objeto anterior, ninguno es el mismo
+                                                              // el transform es unico porque referencia a la posicion del objeto
+                                                              // en el panel de interes, como dibujamos desde esos datos
+                                                              // no puede ser compartido
         
         LAYER *targetLayer = NULL;
         EHASH *found = hashing(newP->layers, obj->layerKey);
@@ -625,7 +630,7 @@ GRAPH *generateBluePrint(char *sequenceName, QUEUE *objectSequence, int type)
     return newSequence;
 }
 
-OBJECT *instanceObject(char *objectName, char *layerName, TRANSFORM *initial, LIST *figures, GRAPH *bluePrint)
+OBJECT *instanceObject(OBJECT *template)
 {
     /*
         Asi es, el bluePrint va aqui
@@ -636,22 +641,47 @@ OBJECT *instanceObject(char *objectName, char *layerName, TRANSFORM *initial, LI
 
     */
 
-    OBJECT *newObj = initObject(objectName, layerName, initial, figures);
+    OBJECT *newObj = initObject(template->objectName, template->layerName, NULL, template->figures); //Las figuras, el nombre y la capa se mantienen igual
     
-    if(!newObj) return NULL;
+    if(!newObj) 
+        return NULL;
 
-    // Cargar el estado base 
-    STATUS *idleSt = getBase(Idle);
-    if(idleSt)
+    COORD *newPos = NULL, *newScale = NULL, *newRot = NULL;
+
+    if(template->t)
     {
-        // Insertamos el IDLE en la pila (Bottom)
-        handleInsert(&newObj->statusStack, idleSt, 0, SIMPLE);
-        newObj->activeStatus = idleSt;
-
-        if(bluePrint)
-            newObj->activeStatus->animSequence = bluePrint;
-
+        newPos   = initCoord(template->t->globalPos->x, template->t->globalPos->y, template->t->globalPos->z);
+        newScale = initCoord(template->t->scale->x, template->t->scale->y, template->t->scale->z);
+        newRot   = initCoord(template->t->rotation->x, template->t->rotation->y, template->t->rotation->z);
+        
+        newObj->t = initPhysics(template->t->colissionBox, newPos, newScale, newRot);
+        
+        newObj->t->effectArea = template->t->effectArea;
     }
+
+    LIST *previousStack = NULL;
+    LIST *iter = template->statusStack;
+
+    // Volcar la pila
+    while(iter)
+    {
+        handleInsert(&previousStack, iter->data, 0, SIMPLE);
+        iter = iter->next;
+    }
+
+    // Rearmar la pila
+
+    while(previousStack)
+    {
+        handleInsert(&newObj->statusStack,popData(&previousStack),0,SIMPLE)
+    }
+
+    // Utilizamos los mismos estados porque al final solo guardaremose el dibujado, y el dibujado es independiente del estado,
+    // lo que iteraremos es la Cola paneles, no la animacion en si, utilizamos el mismo stack para ahorrar memoria
+    // y mantener integridad en la animacion
+
+    newObj->activeStatus = template->activeStatus;
+    newObj->currentFrame = template->currentFrame;
 
     return newObj;
 }
@@ -729,7 +759,7 @@ void calculateDimensions(OBJECT *obj)
             LIST *pIter = fig->offSet;
             while(pIter)
             {
-                COORD *p = (COORD*)pIter->data;
+                CRD *p = (CRD*)pIter->data;
                 
 
                 float effectiveX = p->x + fig->relPos->x;
@@ -967,4 +997,40 @@ void Fall(OBJECT *self, int step, void *params, void *env)
 
     if(self->activeStatus && self->activeStatus->animSequence)
          advanceAutomata(self);
+}
+
+int animationSimple(ANI *toModify, SCENE *absolute, LIST *initialObjects, int frames)
+{
+    if(!toModify || !initialObjects || absolute)
+        return -1;
+
+    for(int i=0; i<frames; i++)
+    {
+        PANEL *nextPanel = generatePanelFromObjects(absolute,initialObjects);   // Crea efectivamente un nuevo panel
+                                                                                // desde la lista de objetos
+                                                                                // los paneles son instanciados, ergo, sus componentes son individuales
+                                                                                // por lo que no hace falta copiar cada objeto, cada panel copia sus objetos despues de simular
+                                                                                // vida
+
+        if(!nextPanel)
+            return -1;
+
+        LIST *objects = initialObjects;
+
+        while(objects)
+        {
+            OBJECT *current = (OBJECT*)objects->data;
+
+            if(current->activeStatus && current->activeStatus->func)
+                current->activeStatus->func(current,i,current->activeStatus->params,nextPanel)  // Simulamos vida para la lista global de objetos 
+                                                                                                // esto es hermoso porque cada panel copia su propio estado de los objetos
+                                                                                                // al final de la animacion la lista esta lista para seguir con los estados anteriores
+                                                                                                // pero a lo mejor añadiendo nuevos triggers y asi la lista de objetos cambia de manera global
+            objects = objects->next;
+        }                       
+
+        addPanel(toModify,nextPanel);
+    }
+
+    return 0;
 }
