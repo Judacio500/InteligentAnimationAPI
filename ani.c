@@ -1187,9 +1187,17 @@ void timer(int v)
 
 void keyboard(unsigned char key, int x, int y)
 {
-    if (key == 32)
+    switch(key)
     {
-        g_play = !g_play;
+        case 32:
+            g_play = !g_play;
+            break;
+        
+        case 't':
+        case 'T':
+            g_toggle = !g_toggle;
+            break;
+
     }
 }
 
